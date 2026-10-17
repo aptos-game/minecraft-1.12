@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Minecraft 1.12 </title>
+  <title>Minecraft 1.12 · 限时模式</title>
   <link rel="icon" type="image/png" href="7878.png" />
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #fff; }
@@ -76,7 +76,7 @@
     }
 
     /* ============ 参数说明 ============
-     * min   限时分钟数（默认 30，支持小数，如 1.5=1分30秒）
+     * min   限时分钟数（默认 1，支持小数，如 1.5=1分30秒）
      * sec   额外秒数（默认 0）
      * build 游戏构建：wasm（默认）/ js
      * boost 性能增强 Mod：1（默认）/ 0
@@ -84,7 +84,7 @@
      * msg   到点白屏时显示的一行小字（留空=纯白屏）
      * pass  重新计时所需密码（留空=白屏后无任何入口）
      * reset 1 表示清掉已存计时、重新开始（家长用）
-     * 示例：time-limit.html?min=45&build=wasm&msg=时间到了，休息一下吧
+     * 示例：index.html?min=45&build=wasm&msg=时间到了，休息一下吧
      */
     var MIN   = Math.max(0, parseFloat(qs('min', '1')) || 0);
     var SEC   = Math.max(0, parseInt(qs('sec', '0'), 10) || 0);
@@ -96,7 +96,9 @@
     var RESET = qs('reset', '0') === '1';
 
     var TOTAL = Math.max(1, MIN * 60 + SEC); // 总秒数
-    var KEY = 'mc112_limit_start_v1';          // localStorage 计时起点
+    /* key 里带上时长：家长改时长后旧计时自动作废、重新计时；
+       不改时长时（孩子刷新页面）计时继续有效 */
+    var KEY = 'mc112_limit_start_' + TOTAL;
     var done = false;
 
     /* ---- 读取/写入计时起点：刷新页面不会重置计时 ---- */
