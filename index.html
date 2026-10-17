@@ -6,7 +6,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Minecraft 1.12 · 限时模式</title>
+  <title>Minecraft 1.12 </title>
   <link rel="icon" type="image/png" href="7878.png" />
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #fff; }
@@ -86,7 +86,7 @@
      * reset 1 表示清掉已存计时、重新开始（家长用）
      * 示例：time-limit.html?min=45&build=wasm&msg=时间到了，休息一下吧
      */
-    var MIN   = Math.max(0, parseFloat(qs('min', '30')) || 0);
+    var MIN   = Math.max(0, parseFloat(qs('min', '1')) || 0);
     var SEC   = Math.max(0, parseInt(qs('sec', '0'), 10) || 0);
     var BUILD = qs('build', 'wasm') === 'js' ? 'js' : 'wasm';
     var BOOST = qs('boost', '1') === '0' ? '0' : '1';
