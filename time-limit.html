@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Minecraft 1.12 · 限时模式</title>
+  <link rel="icon" type="image/png" href="7878.png" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #fff; }
+    #frame {
+      position: fixed; inset: 0; width: 100%; height: 100%;
+      border: 0; display: block; background: #000;
+    }
+    /* 右上角倒计时小标签 */
+    #timerChip {
+      position: fixed; top: 12px; right: 14px; z-index: 9000;
+      font: 600 14px/1 "JetBrains Mono", Consolas, "Microsoft YaHei", monospace;
+      color: #fff; background: rgba(0,0,0,.45);
+      padding: 7px 12px; border-radius: 8px;
+      pointer-events: none; user-select: none;
+      backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+    }
+    /* 时间到：整屏白屏遮罩，盖住并停掉游戏 */
+    #whiteScreen {
+      position: fixed; inset: 0; z-index: 99999;
+      background: #fff;
+      display: none; align-items: center; justify-content: center;
+    }
+    #whiteScreen.show { display: flex; }
+    #whiteMsg {
+      color: #bbb; font: 15px/1.8 "Microsoft YaHei", sans-serif;
+      text-align: center; padding: 0 20px;
+    }
+    /* 可选：设置 pass 后出现“重新计时”入口（需密码） */
+    #restartBox {
+      position: fixed; bottom: 20px; right: 20px; z-index: 100000;
+      display: none; text-align: right;
+    }
+    #restartBox.show { display: block; }
+    #restartBox input {
+      width: 110px; padding: 6px 8px; border: 1px solid #ccc; border-radius: 6px; font-size: 13px;
+    }
+    #restartBox button {
+      padding: 6px 12px; border: 0; border-radius: 6px;
+      background: #e1b741; color: #222; font-size: 13px; cursor: pointer; margin-left: 6px;
+    }
+  </style>
+</head>
+<body>
+  <!-- 游戏本体（与启动器一致：wasm / js 构建） -->
+  <iframe id="frame" allowfullscreen allow="fullscreen; autoplay; pointer-lock" referrerpolicy="no-referrer"></iframe>
+
+  <!-- 倒计时标签：timer=0 可隐藏 -->
+  <div id="timerChip">--:--</div>
+
+  <!-- 到点后的白屏遮罩（默认纯白无文字，可用 msg= 加一行小字） -->
+  <div id="whiteScreen"><div id="whiteMsg"></div></div>
+
+  <!-- 可选重启入口（需 pass= 密码） -->
+  <div id="restartBox">
+    <input id="passInput" type="password" placeholder="密码" autocomplete="off" />
+    <button id="restartBtn" type="button">重新计时</button>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+    function qs(name, def) {
+      try {
+        var v = new URLSearchParams(location.search).get(name);
+        return v === null ? def : v;
+      } catch (e) { return def; }
+    }
+
+    /* ============ 参数说明 ============
+     * min   限时分钟数（默认 30，支持小数，如 1.5=1分30秒）
+     * sec   额外秒数（默认 0）
+     * build 游戏构建：wasm（默认）/ js
+     * boost 性能增强 Mod：1（默认）/ 0
+     * timer 是否显示倒计时：1（默认）/ 0
+     * msg   到点白屏时显示的一行小字（留空=纯白屏）
+     * pass  重新计时所需密码（留空=白屏后无任何入口）
+     * reset 1 表示清掉已存计时、重新开始（家长用）
+     * 示例：time-limit.html?min=45&build=wasm&msg=时间到了，休息一下吧
+     */
+    var MIN   = Math.max(0, parseFloat(qs('min', '30')) || 0);
+    var SEC   = Math.max(0, parseInt(qs('sec', '0'), 10) || 0);
+    var BUILD = qs('build', 'wasm') === 'js' ? 'js' : 'wasm';
+    var BOOST = qs('boost', '1') === '0' ? '0' : '1';
+    var SHOW_TIMER = qs('timer', '1') !== '0';
+    var MSG   = qs('msg', '');
+    var PASS  = qs('pass', '');
+    var RESET = qs('reset', '0') === '1';
+
+    var TOTAL = Math.max(1, MIN * 60 + SEC); // 总秒数
+    var KEY = 'mc112_limit_start_v1';          // localStorage 计时起点
+    var done = false;
+
+    /* ---- 读取/写入计时起点：刷新页面不会重置计时 ---- */
+    var start = null;
+    try {
+      if (RESET) localStorage.removeItem(KEY);
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var t = parseInt(raw, 10);
+        if (isFinite(t)) start = t;
+      }
+    } catch (e) { /* localStorage 不可用时退回单次会话计时 */ }
+    if (start === null) {
+      start = Date.now();
+      try { localStorage.setItem(KEY, String(start)); } catch (e) {}
+    }
+
+    function remaining() { return TOTAL - (Date.now() - start) / 1000; }
+
+    function fmt(sec) {
+      sec = Math.max(0, Math.ceil(sec));
+      var h = Math.floor(sec / 3600);
+      var m = Math.floor((sec % 3600) / 60);
+      var s = sec % 60;
+      function p(n) { return n < 10 ? '0' + n : '' + n; }
+      return h > 0 ? (h + ':' + p(m) + ':' + p(s)) : (p(m) + ':' + p(s));
+    }
+
+    /* ---- 到点：整屏白屏 + 停掉游戏 ---- */
+    function whiteout() {
+      if (done) return;
+      done = true;
+      var frame = document.getElementById('frame');
+      try { frame.src = 'about:blank'; } catch (e) {}   // 卸载游戏，停止声音和渲染
+      var msgEl = document.getElementById('whiteMsg');
+      msgEl.textContent = MSG || '';                     // 默认纯白，无任何文字
+      document.getElementById('whiteScreen').classList.add('show');
+      document.getElementById('timerChip').style.display = 'none';
+      if (PASS) document.getElementById('restartBox').classList.add('show');
+    }
+
+    function tick() {
+      var r = remaining();
+      if (r <= 0) { whiteout(); return; }
+      if (SHOW_TIMER) {
+        document.getElementById('timerChip').textContent = '剩余 ' + fmt(r);
+      }
+    }
+
+    /* ---- 启动 ---- */
+    var frame = document.getElementById('frame');
+    frame.src = './' + BUILD + '/?boost=' + BOOST;
+    document.getElementById('timerChip').style.display = SHOW_TIMER ? '' : 'none';
+
+    tick();
+    setInterval(tick, 500);
+    /* 切回标签页时立刻校准，防止后台偷偷拖时间 */
+    document.addEventListener('visibilitychange', tick);
+
+    /* ---- 可选：密码重启计时 ---- */
+    document.getElementById('restartBtn').addEventListener('click', function () {
+      var v = document.getElementById('passInput').value;
+      if (v !== PASS) { alert('密码错误'); return; }
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      var p = [];
+      p.push('reset=1');
+      p.push('min=' + MIN);
+      p.push('sec=' + SEC);
+      p.push('build=' + BUILD);
+      p.push('boost=' + BOOST);
+      if (!SHOW_TIMER) p.push('timer=0');
+      if (MSG) p.push('msg=' + encodeURIComponent(MSG));
+      if (PASS) p.push('pass=' + encodeURIComponent(PASS));
+      location.href = location.pathname + '?' + p.join('&');
+    });
+  })();
+  </script>
+</body>
+</html>
