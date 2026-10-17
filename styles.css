@@ -300,7 +300,7 @@ html, body {
   }
 }
 
-/* ---- EaglerBoost 性能增强 Mod 开关 ---- */
+/* ---- EaglerBoost performance mod toggle ---- */
 .boost-toggle {
   margin-top: 1rem;
   width: min(380px, 100%);

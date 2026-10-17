@@ -1,42 +1,43 @@
 /* ============================================================
- * Eaglercraft X Autoclicker  v1.11  (Ruian Client)
- * 按键:  V = 开关连点器(不弹窗)   | 或 点 AC 圆钮 = 参数面板
- *       长按左键/右键自动连点, CPS 1~100, 支持 CPS 随机跳动
- * v1.11: 修复旧版面板出现两个"跳动幅度"滑块 + 数值 NaN 的 bug;
- *        面板只保留一个跳动幅度滑块, CPS 用 [-] [+] 按钮调节;
- *        加载时输出 [RuianAC] v1.11 日志方便确认版本
- * v1.10: 修复面板按钮按不了(打开面板自动退出指针锁定);
- *        面板内点击不再误触发连点
- * v1.9: CPS 加减按钮移入 | 面板( [-] [CPS] [+] 按钮组 + 滑块),
- *       不再常驻屏幕, 按 | 或点 AC 圆钮即可调节
- * v1.8: AC 圆钮旁新增 [-] [CPS] [+] 加减按钮
- * v1.7: AC 圆钮点击改为打开参数面板(CPS 滑块等), 不再只做开关
- * v1.6 修复: 游戏内指针锁定(pointer lock)下长按中途断连
- *   - mousedown/mouseup 只作状态入口, 用 mousemove.buttons 实时
- *     校验收音键物理状态, mouseup 事件丢失不再误停
- *   - 指针锁定丢失 / 页面失焦才停止, 重新锁定后保持待命
+ * Eaglercraft X AutoClicker  v1.11  (Ruian Client)
+ * Keys:  V = toggle auto-clicker (no popup)  |  or click the AC round button = settings panel
+ *       Hold left/right mouse button to auto-click, CPS 1~100, jitter supported
+ * v1.11: fixed the old panel showing two "jitter amount" sliders + NaN values;
+ *        the panel keeps only one jitter slider, CPS is adjusted with [-] [+] buttons;
+ *        logs [RuianAC] v1.11 on load so the version can be confirmed
+ * v1.10: fixed panel buttons not clickable (opening the panel exits pointer lock);
+ *        clicks inside the panel no longer trigger auto-clicks
+ * v1.9: CPS +/- buttons moved into the | panel ([-] [CPS] [+] button group + slider),
+ *       no longer always on screen; press | or click the AC round button to adjust
+ * v1.8: added [-] [CPS] [+] buttons next to the AC round button
+ * v1.7: clicking the AC round button now opens the settings panel (CPS slider etc.),
+ *       not just toggling
+ * v1.6 fix: fixed disconnection while holding during in-game pointer lock
+ *   - mousedown/mouseup are only state entries; mousemove.buttons re-checks the
+ *     physical button state in real time, so lost mouseup events no longer stop wrongly
+ *   - stops only on pointer lock loss / page blur; stays armed after re-lock
  * ============================================================ */
 (function () {
   'use strict';
   var LS_KEY = 'eagler_autoclicker_settings';
   var DEFAULTS = { enabled: false, cps: 12, left: true, right: false, jitter: true, jitterPct: 10 };
   var settings = loadSettings();
-  var held = { 0: false, 2: false };   // 物理按键状态(0=左键 2=右键)
-  var timer = null;                    // setTimeout 句柄(自调度, 不用 setInterval)
+  var held = { 0: false, 2: false };   // physical button state (0 = left, 2 = right)
+  var timer = null;                    // setTimeout handle (self-scheduled, no setInterval)
   var panelEl = null;
   var btnEl = null;
-  var panelCpsValEl = null;            // 面板里的 CPS 数值显示
+  var panelCpsValEl = null;            // CPS value display inside the panel
   var cpsHoldTimer = null;
   var canvas = null;
 
-  /* ---------- 基础工具 ---------- */
+  /* ---------- basics ---------- */
   function loadSettings() {
     try {
       var raw = localStorage.getItem(LS_KEY);
       if (raw) {
         var o = JSON.parse(raw);
         if (o && typeof o === 'object') {
-          // 过滤旧版本留下的 undefined/null 字段, 防止 NaN
+          // filter out undefined/null fields left by old versions to prevent NaN
           Object.keys(o).forEach(function (k) { if (o[k] === undefined || o[k] === null) delete o[k]; });
           return Object.assign({}, DEFAULTS, o);
         }
@@ -69,7 +70,7 @@
     } catch (e) {}
   }
 
-  /* ---------- 合成点击(发给游戏画布) ---------- */
+  /* ---------- synthetic clicks (sent to the game canvas) ---------- */
   function fireClick(btn) {
     var c = getCanvas();
     if (!c) return;
@@ -81,12 +82,12 @@
     } catch (e) {}
   }
 
-  /* ---------- 连点节奏(CPS 跳动) ---------- */
+  /* ---------- click rhythm (CPS jitter) ---------- */
   function nextInterval() {
     var base = 1000 / clamp(settings.cps, 1, 100);
     if (settings.jitter) {
       var pct = clamp(settings.jitterPct, 0, 50) / 100;
-      return base * (1 + (Math.random() * 2 - 1) * pct); // 例:20cps±10% => 18~22
+      return base * (1 + (Math.random() * 2 - 1) * pct); // e.g. 20cps ± 10% => 18~22
     }
     return base;
   }
@@ -107,13 +108,13 @@
     if (settings.enabled && anyHeld() && !timer) { timer = setTimeout(tick, 30); }
   }
 
-  /* ---------- 真实鼠标事件 ---------- */
+  /* ---------- real mouse events ---------- */
   function inPanel(t) {
     return panelEl && panelEl.isConnected && panelEl.contains(t);
   }
   function onMouseDown(e) {
     if (e.isAutoClick) return;
-    if (inPanel(e.target)) return;   // 点面板按钮不触发连点
+    if (inPanel(e.target)) return;   // clicking panel buttons does not trigger auto-click
     var b = e.button;
     if (b === 0 || b === 2) held[b] = true;
     ensureRunning();
@@ -126,15 +127,15 @@
     if (!anyHeld()) stop();
   }
   function onMouseMove(e) {
-    if (e.isAutoClick) return; // 忽略自瞄等合成事件
-    // v1.6 核心: 用 buttons 交叉校正, mouseup 丢失也不误停
+    if (e.isAutoClick) return; // ignore synthetic events such as aim assist
+    // v1.6 core: cross-check with buttons, a lost mouseup no longer stops wrongly
     if (held[0] && !(e.buttons & 1)) held[0] = false;
     if (held[2] && !(e.buttons & 2)) held[2] = false;
     if (!anyHeld()) stop();
   }
   function onPointerLockChange() {
     if (!document.pointerLockElement) {
-      // 锁定丢失(按Esc/切窗) -> 安全停止, 设置保持, 下次按下自动恢复
+      // pointer lock lost (Esc/window switch) -> stop safely, keep settings, auto-resume on next press
       held[0] = held[2] = false;
       stop();
     }
@@ -145,18 +146,18 @@
     var t = e.target;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
     var k = e.key, kc = e.keyCode, code = e.code;
-    // V = 直接开关(不弹界面)
+    // V = direct toggle (no popup)
     if (kc === 86 || k === 'v' || k === 'V' || code === 'KeyV') {
       e.preventDefault();
       settings.enabled = !settings.enabled;
       saveSettings();
       updateBtn();
       if (!settings.enabled) stop();
-      toast('连点器 ' + (settings.enabled ? '开启' : '关闭'));
+      toast('AutoClicker ' + (settings.enabled ? 'ON' : 'OFF'));
       if (settings.enabled) ensureRunning();
       return;
     }
-    // | 或 \ = 打开参数面板
+    // | or \ = open the settings panel
     if (kc === 220 || kc === 226 || k === '|' || k === '\\' || k === '｜' || k === '、' || code === 'Backslash' || code === 'IntlBackslash') {
       e.preventDefault();
       togglePanel();
@@ -164,12 +165,12 @@
     }
   }
 
-  /* ---------- 悬浮圆钮 ---------- */
+  /* ---------- floating round button ---------- */
   function makeBtn() {
     if (btnEl && btnEl.isConnected) return;
     btnEl = document.createElement('div');
     btnEl.textContent = 'AC';
-    btnEl.title = '连点器: 点击打开设置 (V 开关 / | 面板)';
+    btnEl.title = 'AutoClicker: click to open settings (V toggle / | panel)';
     btnEl.style.cssText = 'position:fixed;top:8px;right:8px;z-index:2147483646;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:bold 12px/1 sans-serif;color:#fff;cursor:pointer;user-select:none;box-shadow:0 2px 8px rgba(0,0,0,.4);background:' + (settings.enabled ? '#2ecc71' : '#555') + ';';
     btnEl.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -181,7 +182,7 @@
     if (btnEl && btnEl.isConnected) btnEl.style.background = settings.enabled ? '#2ecc71' : '#555';
   }
 
-  /* ---------- CPS 调节 (面板内) ---------- */
+  /* ---------- CPS adjustment (inside the panel) ---------- */
   function adjustCps(delta) {
     settings.cps = clamp(settings.cps + delta, 1, 100);
     saveSettings();
@@ -211,7 +212,7 @@
   function cpsRow() {
     var r = document.createElement('div');
     r.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin:8px 0;';
-    var l = document.createElement('span'); l.textContent = 'CPS 速度'; l.style.color = '#ccc';
+    var l = document.createElement('span'); l.textContent = 'CPS Speed'; l.style.color = '#ccc';
     var grp = document.createElement('div');
     grp.style.cssText = 'display:flex;align-items:center;gap:6px;';
     var v = document.createElement('span');
@@ -225,30 +226,30 @@
     return r;
   }
 
-  /* ---------- 参数面板 ---------- */
+  /* ---------- settings panel ---------- */
   function togglePanel() {
     if (panelEl && panelEl.isConnected) { panelEl.remove(); panelEl = null; return; }
-    // 打开面板时退出指针锁定: 游戏内鼠标被锁定时点击不到面板按钮
+    // exit pointer lock when opening the panel: locked mouse cannot click panel buttons in game
     try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) {}
     panelEl = document.createElement('div');
     panelEl.style.cssText = 'position:fixed;top:12px;right:54px;z-index:2147483647;width:260px;background:rgba(18,18,24,.94);color:#eee;border:1px solid #333;border-radius:10px;padding:14px;font:13px/1.5 sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5);';
     var h = document.createElement('div');
     h.style.cssText = 'font-weight:bold;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;';
-    h.innerHTML = '<span>连点器设置</span><span style="color:#888;font-weight:normal;font-size:11px">| 关闭</span>';
+    h.innerHTML = '<span>AutoClicker Settings</span><span style="color:#888;font-weight:normal;font-size:11px">| Close</span>';
     panelEl.appendChild(h);
-    panelEl.appendChild(row('启用连点器', toggle('enabled', function (v) {
+    panelEl.appendChild(row('Enable AutoClicker', toggle('enabled', function (v) {
       if (!v) stop();
       updateBtn();
-      toast('连点器 ' + (v ? '开启' : '关闭'));
+      toast('AutoClicker ' + (v ? 'ON' : 'OFF'));
     })));
     panelEl.appendChild(cpsRow());
-    panelEl.appendChild(row('左键连点', toggle('left')));
-    panelEl.appendChild(row('右键连点', toggle('right')));
-    panelEl.appendChild(row('CPS 跳动', toggle('jitter')));
-    panelEl.appendChild(slider('jitterPct', 0, 50, 1, '跳动幅度', '%'));
+    panelEl.appendChild(row('Left-Click', toggle('left')));
+    panelEl.appendChild(row('Right-Click', toggle('right')));
+    panelEl.appendChild(row('CPS Jitter', toggle('jitter')));
+    panelEl.appendChild(slider('jitterPct', 0, 50, 1, 'Jitter Amount', '%'));
     var tip = document.createElement('div');
     tip.style.cssText = 'margin-top:8px;color:#999;font-size:11px;line-height:1.8;';
-    tip.innerHTML = 'V 开关连点 · | 此面板<br>长按左/右键自动连点';
+    tip.innerHTML = 'V toggles auto-click · | opens this panel<br>Hold left/right button to auto-click';
     panelEl.appendChild(tip);
     document.body.appendChild(panelEl);
   }
@@ -280,7 +281,7 @@
     var head = document.createElement('div');
     head.style.cssText = 'display:flex;justify-content:space-between;color:#ccc;';
     var lab = document.createElement('span'); lab.textContent = label;
-    // NaN 兜底: 旧版本地设置可能残留非法值
+    // NaN fallback: old local settings may keep invalid values
     var safe = (typeof settings[key] === 'number' && isFinite(settings[key])) ? clamp(settings[key], min, max) : min;
     var val = document.createElement('span'); val.textContent = safe + (unit || '');
     val.style.color = '#fff'; val.style.fontWeight = 'bold';
@@ -298,7 +299,7 @@
     return wrap;
   }
 
-  /* ---------- 启动 ---------- */
+  /* ---------- init ---------- */
   function init() {
     makeBtn();
     updateBtn();

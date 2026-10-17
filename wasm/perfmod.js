@@ -1,30 +1,35 @@
 /*!
-* EaglerBoost 性能增强 Mod  (perfmod.js)  v3.4
+* EaglerBoost performance mod  (perfmod.js)  v3.4
 * ---------------------------------------------
-* 给本仓库的 EaglercraftX 1.12 (modernclient) 客户端注入三组优化：
+* Injects three groups of optimizations into this repo's EaglercraftX 1.12
+* (modernclient) client:
 *
-*  1) 加载区块  —— LOD 渲染 + 更大的区块加载距离 + 区块修正
-*  2) 加载人物  —— 实体剔除 + 关闭实体阴影
-*  3) 提升 FPS  —— 关闭雨/粒子/附魔光效/云、降平滑光照与 mipmap、
-*                  开启方块面剔除/区块网格优化，并关闭调试堆栈去混淆以减少卡顿
+*  1) Chunk loading  - LOD rendering + larger chunk loading distance + chunk fix
+*  2) Entity loading - entity culling + disabled entity shadows
+*  3) FPS boost      - disable rain/particles/enchant glint/clouds, lower smooth
+*                      lighting and mipmaps, enable face culling/chunk mesh
+*                      optimization, and disable debug stack deobfuscation to
+*                      reduce lag
 *
-* v3.4 修正（存储位置结论反转，浏览器实测确认）：
-*   游戏设置真实存储在 localStorage["_eaglercraft_1.12.g"]（base64 纯文本），
-*   不是 IndexedDB！v3.3 的"IndexedDB"结论是错的（当时被误导）。
-*   本版仍通过 ruianstorage.js 接口读写 —— ruianstorage v1.2 已改为
-*   localStorage 桥接，此文件逻辑无需改动，仅更新版本号强制刷新缓存。
+* v3.4 fix (storage conclusion reversed, confirmed in browser):
+*   Game settings actually live in localStorage["_eaglercraft_1.12.g"] (base64
+*   plain text), not IndexedDB! v3.3's "IndexedDB" conclusion was wrong (misled
+*   at the time). This version still reads/writes through the ruianstorage.js
+*   interface - ruianstorage v1.2 now bridges to localStorage, so this file's
+*   logic is unchanged; only the version number was bumped to force a cache
+*   refresh.
 *
-* v3.3 变更（沿用）：
+* v3.3 changes (kept):
 *   - maxFps 260 -> 120 / particles 2 -> 0 / fog true -> false / renderDistance 9 -> 7
-*   - lodStartDistance 8 -> 7（与 preset 对齐）
-*   - 关掉 showOwnNametag / entityShadows
+*   - lodStartDistance 8 -> 7 (aligned with preset)
+*   - turned off showOwnNametag / entityShadows
 *
-* 通过 URL 参数控制：?boost=1 开启（默认），?boost=0 关闭
+* Controlled by URL parameter: ?boost=1 enabled (default), ?boost=0 disabled
 * ---------------------------------------------
 */
 (function () {
 "use strict";
-// 性能增强预设：base64(设置文本)，纯文本行、无 gzip
+// Performance preset: base64(settings text), plain text lines, no gzip
 // v3.1: renderDistance:7 / lodStartDistance:7 / fog:false / maxFps:120 / particles:0
 var BOOST_SETTINGS_B64 =
 "dmVyc2lvbjoxMzQzCm1vZGVybl9sb2RSZW5kZXJpbmc6dHJ1ZQptb2Rlcm5fbG9kVmlld0Rpc3RhbmNlOjMyCm1vZGVybl9sb2RTdGFydERpc3RhbmNlOjcKcmVuZGVyRGlzdGFuY2U6NwpvZkNodW5rVXBkYXRlczoxCmNodW5rRml4OnRydWUKZm9nOmZhbHNlCm1vZGVybl9lbnRpdHlDdWxsaW5nOnRydWUKZW50aXR5U2hhZG93czpmYWxzZQptb2Rlcm5fc2hvd093bk5hbWV0YWc6ZmFsc2UKbWF4RnBzOjEyMAplbmFibGVWU3luYzp0cnVlCnBhcnRpY2xlczowCmFvOjAKbWlwbWFwTGV2ZWxzOjAKZmFuY3lHcmFwaGljczpmYWxzZQplbmRlckNsb3VkczpmYWxzZQptb2Rlcm5fbm9SYWluOnRydWUKbW9kZXJuX25vUGFydGljbGVzOnRydWUKbW9kZXJuX25vR2xpbnQ6ZmFsc2UKbW9kZXJuX2Jsb2NrRmFjZUN1bGxpbmc6dHJ1ZQptb2Rlcm5fY2h1bmtNZXNoT3B0aW1pemF0aW9uOnRydWUKbW9kZXJuX2NyeXN0YWxPcHRpbWl6ZXI6dHJ1ZQptb2Rlcm5fZWF0aW5nT3B0aW1pZXI6dHJ1ZQptb2Rlcm5fbW90aW9uQmx1cjpmYWxzZQptb2Rlcm5fZnVsbGJyaWdodDp0cnVlCm1vZGVybl90b3RlbUNvdW50ZXI6ZmFsc2UKbW9kZXJuX2NsaXBwaW5nOmZhbHNlZQ==";
@@ -39,17 +44,17 @@ return v === null ? null : v;
 return null;
 }
 }
-// 是否开启性能增强（默认开启）
+// Whether the performance boost is enabled (enabled by default)
 function isBoostEnabled() {
 var v = getURLParam("boost");
-if (v === null) return true; // 未指定时默认开启
+if (v === null) return true; // enabled by default when unspecified
 return v === "1" || v === "true" || v === "on";
 }
-// 写入增强预设到游戏设置存储（localStorage，经 ruianstorage），合并保留其他设置
+// Write the boost preset into the game settings storage (localStorage, via ruianstorage), merging and keeping other settings
 async function applyBoostSettings() {
 try {
 if (typeof window.__ruianStorageReadOptions !== "function") {
-console.warn("[EaglerBoost] ruianstorage 未加载，跳过设置注入。");
+console.warn("[EaglerBoost] ruianstorage not loaded, settings injection skipped.");
 return false;
 }
 var text = await window.__ruianStorageReadOptions();
@@ -57,9 +62,9 @@ var map = {};
 if (text !== null && text.length > 0) {
 map = window.__ruianStorageParse(text);
 } else {
-console.warn("[EaglerBoost] 设置不存在，将用完整增强预设初始化。");
+console.warn("[EaglerBoost] settings not found, initializing with the full boost preset.");
 }
-// BOOST 预设解析并合并覆盖
+// Parse the boost preset and merge/overwrite
 var boostMap = window.__ruianStorageParse(window.__ruianStorageB64ToText(BOOST_SETTINGS_B64));
 for (var k in boostMap) {
 map[k] = boostMap[k];
@@ -67,39 +72,39 @@ map[k] = boostMap[k];
 var newText = window.__ruianStorageSerialize(map);
 var ok = await window.__ruianStorageWriteOptions(newText);
 if (ok) {
-console.log("[EaglerBoost] 性能增强设置已写入 v3.4（渲染7/ maxFps120/ 无粒子/ 关雾）。");
+console.log("[EaglerBoost] performance settings written v3.4 (renderDistance 7 / maxFps 120 / no particles / fog off).");
 }
 return ok;
 } catch (ex) {
-console.error("[EaglerBoost] 写入设置失败: " + ex);
+console.error("[EaglerBoost] failed to write settings: " + ex);
 return false;
 }
 }
-// 供 wasm/index.html 在创建 eaglercraftXOpts 之后调用（返回 Promise，必须 await）
+// Called by wasm/index.html after eaglercraftXOpts is created (returns a Promise, must await)
 window.__eaglerBoostApply = function (opts) {
 try {
 if (!opts || typeof opts !== "object") return Promise.resolve(false);
 var boost = isBoostEnabled();
-// ---- 启动/渲染层优化（这些项由客户端读取，安全）----
+// ---- Startup/rendering layer optimizations (read by the client, safe) ----
 opts.enforceVSync = true;
 opts.deobfStackTraces = false;
 opts.checkGLErrors = false;
 opts.checkShaderGLErrors = false;
 opts.useDelayOnSwap = false;
 opts.useWebGLExt = true;
-// ---- 游戏设置注入（localStorage，经 ruianstorage）----
+// ---- Game settings injection (localStorage, via ruianstorage) ----
 if (boost) {
 return applyBoostSettings().then(function (ok) {
-console.log("[EaglerBoost] 性能增强 Mod v3.4 已开启：LOD 区块渲染 / 实体加载优化 / FPS 提升。");
+console.log("[EaglerBoost] performance mod v3.4 enabled: LOD chunk rendering / entity loading optimization / FPS boost.");
 return ok;
 });
 } else {
-console.log("[EaglerBoost] 性能增强 Mod 已关闭（?boost=0），不改动设置。");
+console.log("[EaglerBoost] performance mod disabled (?boost=0), settings untouched.");
 return Promise.resolve(false);
 }
 } catch (ex) {
-// 任何异常都不允许影响游戏本体启动
-console.error("[EaglerBoost] 初始化失败（已忽略）: " + ex);
+// No exception may prevent the game itself from starting
+console.error("[EaglerBoost] init failed (ignored): " + ex);
 return Promise.resolve(false);
 }
 };

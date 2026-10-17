@@ -1,45 +1,51 @@
 /*!
-* Ruian Mod 屏蔽 (modfilter.js)  v3.2
+* Ruian Mod Filter (modfilter.js)  v3.2
 * ---------------------------------------------
-* 锁定式屏蔽：在游戏启动前 AND 游戏运行期间，强制锁定以下 Modern 功能：
-*   - 动态模糊 Motion Blur        → modern_motionBlur:false     （永远关闭）
-*   - 禁用 Boss 血条功能           → modern_disableBossBar:false （该 mod 功能永远关闭）
-*   - 图腾计数 Totem Counter      → modern_totemCounter:false   （永远关闭）
+* Lock-style filtering: before game startup AND while the game runs, force the
+* following Modern features to stay disabled:
+*   - Motion Blur              -> modern_motionBlur:false     (always off)
+*   - Boss bar feature         -> modern_disableBossBar:false (this mod feature stays off)
+*   - Totem Counter            -> modern_totemCounter:false   (always off)
 *
-* v3.2 变更（实现“打开了还是没用”的锁定屏蔽）：
-*   - 恢复三项均强制 false（用户确认的屏蔽语义：关闭这三个 mod 功能；
-*     v3.1 把 disableBossBar 写成 true 是误改，已撤销）。
-*   - 新增【运行时守护】Runtime Guard：
-*     ① 拦截 localStorage.setItem：游戏回写设置时，屏蔽键一律强制写回 false；
-*     ② 每 5 秒定时强制写回：即使游戏绕过拦截直接写存储，也会被修正；
-*     → 玩家在游戏里打开这三个开关，也会被立即改回 / 下次读取时强制关闭，
-*       达到“打开了还是没用”的锁定效果。
+* v3.2 changes (lock filtering, "turning it on still does nothing"):
+*   - Restored all three to forced false (user-confirmed semantics: these three
+*     mod features are off; v3.1's disableBossBar:true was a mistake, reverted).
+*   - Added a Runtime Guard:
+*     ① Intercept localStorage.setItem: when the game writes settings back, the
+*        filtered keys are force-written back to false;
+*     ② Every 5 seconds force-write again: even if the game bypasses the
+*        interception and writes storage directly, it gets corrected;
+*     -> if the player enables these three switches in game, they are instantly
+*        reverted / forced off on next read: "turning it on still does nothing".
 *
-* v3.1 变更（已撤销）：
-*   - modern_disableBossBar:true（误改，恢复为 false）
+* v3.1 changes (reverted):
+*   - modern_disableBossBar:true (mistake, restored to false)
 *
-* v3.0 变更（沿用）：
-*   - 存储位置修正：v2.x 写 IndexedDB /options 是给死数据（游戏不读），
-*     本版通过 ruianstorage v1.2 写 localStorage["_eaglercraft_1.12.g"]，
-*     与游戏真实读取位置一致 → 屏蔽项真正生效（实测：改 modern_noRain:false
-*     后 Mods 菜单 No Rain 开关确实变关，键 ↔ 开关一一对应）。
-*   - Mod 菜单保持开放（沿用 v2.1）：删除 key.modmenu / key_key.modmenu 残留。
+* v3.0 changes (kept):
+*   - Storage fix: v2.x wrote IndexedDB /options which was dead data (game does
+*     not read it). This version writes localStorage["_eaglercraft_1.12.g"] via
+*     ruianstorage v1.2, matching where the game really reads -> filters actually
+*     work (tested: setting modern_noRain:false really turned the No Rain switch
+*     off in the Mods menu; keys <-> switches map one to one).
+*   - Mod menu stays open (kept from v2.1): removed key.modmenu / key_key.modmenu
+*     leftovers.
 *
-* 时序（在 wasm/index.html 中，全部 await 串行）：
-*   ruianstorage → perfmod(Boost 写完整配置) → preset(合并 11 项) →
-*   modfilter(本脚本，最后执行合并覆盖，保证不被覆盖) → eagruntime.js
+* Order (in wasm/index.html, all awaited serially):
+*   ruianstorage -> perfmod(Boost writes full config) -> preset(merges 11 items) ->
+*   modfilter(this script, runs last and merges/overwrites so it is not overwritten)
+*   -> eagruntime.js
 * ---------------------------------------------
 */
 (function () {
 "use strict";
-// 每次启动强制生效的屏蔽项（存在则覆盖，不存在则新增；永远锁定为 false）
+// Filtered keys forced on every startup (overwrite if present, add if missing; locked to false)
 var FORCE_KEYS = {
 "modern_motionBlur": "false",
 "modern_disableBossBar": "false",
 "modern_totemCounter": "false"
 };
-// 开放 Mod 菜单：写入前强制删除这些键，让游戏使用默认的 Mod 菜单快捷键
-// （v2.0 曾写入 key.modmenu:-1，不删掉的话菜单仍然打不开）
+// Open the Mod menu: force-delete these keys before writing so the game uses the
+// default Mod menu hotkey (v2.0 wrote key.modmenu:-1; without deleting it the menu stays locked)
 var REMOVE_KEYS = ["key.modmenu", "key_key.modmenu"];
 var STORAGE_KEY = "_eaglercraft_1.12.g";
 function b64ToText(b64) {
@@ -54,7 +60,7 @@ var s = "";
 for (var j = 0; j < bytes.length; j += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(j, j + 0x8000));
 return btoa(s);
 }
-// 强制文本中的屏蔽键为 FORCE_KEYS 值，并删除 REMOVE_KEYS 键；返回新文本
+// Force the filtered keys in the text to their FORCE_KEYS values and delete REMOVE_KEYS; returns the new text
 function forceKeysInText(txt) {
 var lines = txt.split("\n");
 var map = {};
@@ -77,7 +83,8 @@ var out = [];
 for (var j = 0; j < order.length; j++) out.push(order[j] + ":" + map[order[j]]);
 return out.join("\n");
 }
-// 运行时守护：拦截写入 + 定时兜底，玩家打开被屏蔽的开关也会被强制关闭
+// Runtime guard: intercept writes + periodic fallback, so switches opened by the
+// player are force-closed too
 function installRuntimeGuard() {
 try {
 var ls = window.localStorage;
@@ -94,7 +101,7 @@ if (ntxt !== txt) v = textToB64(ntxt);
 }
 return origSet(k, v);
 };
-// 每 5 秒兜底强制写回（防游戏内存回写绕过拦截）
+// Fallback force-write every 5 seconds (in case the game bypasses interception)
 setInterval(function() {
 try {
 var raw = origGet(STORAGE_KEY);
@@ -104,16 +111,16 @@ var ntxt = forceKeysInText(txt);
 if (ntxt !== txt) origSet(STORAGE_KEY, textToB64(ntxt));
 } catch (ex) {}
 }, 5000);
-console.log("[RuianModFilter] v3.2 运行时守护已安装：三个屏蔽开关将被锁定关闭（打开无效）");
+console.log("[RuianModFilter] v3.2 runtime guard installed: the three filtered switches are locked off (enabling does nothing)");
 } catch (ex) {
-console.warn("[RuianModFilter] 运行时守护安装失败: " + ex);
+console.warn("[RuianModFilter] failed to install runtime guard: " + ex);
 }
 }
-// 启动前写入屏蔽（合并保留其他设置）
+// Write the filter before startup (merge and keep the other settings)
 async function applyModFilter() {
 try {
 if (typeof window.__ruianStorageReadOptions !== "function") {
-console.warn("[RuianModFilter] ruianstorage 未加载，跳过。");
+console.warn("[RuianModFilter] ruianstorage not loaded, skipped.");
 return false;
 }
 var text = await window.__ruianStorageReadOptions();
@@ -121,7 +128,7 @@ var map = {};
 if (text !== null && text.length > 0) {
 map = window.__ruianStorageParse(text);
 } else {
-console.warn("[RuianModFilter] 设置不存在，使用最小兜底（依赖 Boost 先写完整配置）。");
+console.warn("[RuianModFilter] settings not found, using minimal fallback (Boost writes the full config first).");
 map = window.__ruianStorageParse(minimalBase());
 }
 var fKeys = Object.keys(FORCE_KEYS);
@@ -135,24 +142,24 @@ if (rKeys[k] in map) delete map[rKeys[k]];
 var newText = window.__ruianStorageSerialize(map);
 var ok = await window.__ruianStorageWriteOptions(newText);
 if (ok) {
-console.log("[RuianModFilter] v3.2 applied: MotionBlur/BossBar/TotemCounter 已锁定关闭（打开无效）, Mod 菜单已开放");
+console.log("[RuianModFilter] v3.2 applied: MotionBlur/BossBar/TotemCounter locked off (enabling does nothing), Mod menu open");
 }
 return ok;
 } catch (ex) {
-console.error("[RuianModFilter] 应用失败（不影响游戏启动）: " + ex);
+console.error("[RuianModFilter] apply failed (game startup is not affected): " + ex);
 return false;
 }
 }
-// 供 wasm/index.html 在 preset 写入之后调用（保证不被覆盖）
+// Called by wasm/index.html after the preset is written (so it is not overwritten)
 window.__eaglerModFilterApply = function () {
 return applyModFilter();
 };
-// 控制台工具
+// Console tools
 window.__ruianModFilter = {
 apply: function () { return applyModFilter(); },
 dump: function () {
 return window.__ruianStorageReadOptions().then(function (text) {
-if (text === null) return "（设置不存在）";
+if (text === null) return "(settings do not exist)";
 var lines = text.split("\n");
 var out = [];
 for (var i = 0; i < lines.length; i++) {
@@ -162,10 +169,10 @@ lines[i].indexOf("modern_totemCounter") === 0) {
 out.push(lines[i]);
 }
 }
-return out.length ? out.join("\n") : "（未找到屏蔽项）";
-}).catch(function (e) { return "解码失败: " + e; });
+return out.length ? out.join("\n") : "(no filtered keys found)";
+}).catch(function (e) { return "decode failed: " + e; });
 }
 };
-// 立即安装运行时守护（modfilter 加载时生效，不依赖游戏启动时序）
+// Install the runtime guard immediately (works when modfilter loads, independent of game startup order)
 installRuntimeGuard();
 })();

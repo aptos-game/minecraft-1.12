@@ -20,15 +20,15 @@
 		<meta property="og:title" content="Eaglercraft 1.12 WASM-GC" />
 		<meta property="og:description" content="test directory HTML page" />
 		<link type="image/png" rel="shortcut icon" href="7878.png" />
-		<!-- Ruian 设置存储桥接：游戏设置存在 localStorage[_eaglercraft_1.12.g]（实测确认），必须先加载 -->
+		<!-- Ruian settings storage bridge: game settings live in localStorage[_eaglercraft_1.12.g] (confirmed by testing), must load first -->
 		<script type="text/javascript" src="ruianstorage.js?v=1.2"></script>
-		<!-- EaglerBoost 性能增强 Mod：必须在 eagruntime.js 之前加载 -->
+		<!-- EaglerBoost performance mod: must load before eagruntime.js -->
 		<script type="text/javascript" src="perfmod.js?v=3.4"></script>
-		<!-- Ruian AutoClicker 连点器 Mod：必须在 eagruntime.js 之前加载 -->
+		<!-- Ruian AutoClicker mod: must load before eagruntime.js -->
 		<script type="text/javascript" src="autoclicker.js?v=1.11"></script>
-		<!-- Ruian 首次启动设置预设：必须在 eagruntime.js 之前加载 -->
+		<!-- Ruian first-launch settings preset: must load before eagruntime.js -->
 		<script type="text/javascript" src="preset.js?v=3.0"></script>
-		<!-- Ruian Mod 屏蔽：锁定关闭指定 Modern 功能（Mod 菜单已开放）。必须在 eagruntime.js 之前加载 -->
+		<!-- Ruian mod filter: force-disable selected Modern features (mod menu stays open). Must load before eagruntime.js -->
 		<script type="text/javascript" src="modfilter.js?v=3.2"></script>
 		<script type="text/javascript">
 			"use strict";
@@ -71,15 +71,15 @@
 							{ addr: "wss://relay.shhnowisnottheti.me/", comment: "ayunami relay #1", primary: relayId === 2 }
 						]
 					};
-					// EaglerBoost 性能增强 Mod：注入优化选项与设置钩子（异步写入 localStorage，必须等待）
+					// EaglerBoost performance mod: inject optimization options and settings hooks (async write to localStorage, must await)
 					if(typeof window.__eaglerBoostApply === "function") {
 						await window.__eaglerBoostApply(eaglercraftXOpts);
 					}
-					// Ruian 首次启动设置：必须在 EaglerBoost 写入之后调用，避免被其覆盖
+					// Ruian first-launch preset: call after EaglerBoost writes so it is not overwritten
 					if(typeof window.__eaglerPresetApply === "function") {
 						await window.__eaglerPresetApply();
 					}
-					// Ruian Mod 屏蔽：必须在 preset 写入之后调用，保证不被覆盖
+					// Ruian mod filter: call after the preset writes so it is not overwritten
 					if(typeof window.__eaglerModFilterApply === "function") {
 						await window.__eaglerModFilterApply();
 					}
@@ -103,8 +103,8 @@
 						getEPKFiles: function() {
 							return [{
 								name: "assets.epk",
-								path: "",
-								data: assetsEPK
+							path: "",
+							data: assetsEPK
 							}];
 						},
 						getRootElement: function() {

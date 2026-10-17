@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>Minecraft 1.12 · 限时模式</title>
+  <title>Minecraft 1.12 · Time-Limited</title>
   <link rel="icon" type="image/png" href="7878.png" />
   <style>
     html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #fff; }
@@ -14,7 +14,7 @@
       position: fixed; inset: 0; width: 100%; height: 100%;
       border: 0; display: block; background: #000;
     }
-    /* 右上角倒计时小标签 */
+    /* Countdown chip at the top-right corner */
     #timerChip {
       position: fixed; top: 12px; right: 14px; z-index: 9000;
       font: 600 14px/1 "JetBrains Mono", Consolas, "Microsoft YaHei", monospace;
@@ -23,7 +23,7 @@
       pointer-events: none; user-select: none;
       backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
     }
-    /* 时间到：整屏白屏遮罩，盖住并停掉游戏 */
+    /* When time is up: full-screen white overlay covering and stopping the game */
     #whiteScreen {
       position: fixed; inset: 0; z-index: 99999;
       background: #fff;
@@ -34,7 +34,7 @@
       color: #bbb; font: 15px/1.8 "Microsoft YaHei", sans-serif;
       text-align: center; padding: 0 20px;
     }
-    /* 可选：设置 pass 后出现“重新计时”入口（需密码） */
+    /* Optional: when pass is set, show a "Restart Timer" entry (password required) */
     #restartBox {
       position: fixed; bottom: 20px; right: 20px; z-index: 100000;
       display: none; text-align: right;
@@ -50,19 +50,19 @@
   </style>
 </head>
 <body>
-  <!-- 游戏本体（与启动器一致：wasm / js 构建） -->
+  <!-- Game itself (same as the launcher: wasm / js build) -->
   <iframe id="frame" allowfullscreen allow="fullscreen; autoplay; pointer-lock" referrerpolicy="no-referrer"></iframe>
 
-  <!-- 倒计时标签：timer=0 可隐藏 -->
+  <!-- Countdown chip: hide with timer=0 -->
   <div id="timerChip">--:--</div>
 
-  <!-- 到点后的白屏遮罩（默认纯白无文字，可用 msg= 加一行小字） -->
+  <!-- White-screen overlay when time is up (plain white by default; add a line of text with msg=) -->
   <div id="whiteScreen"><div id="whiteMsg"></div></div>
 
-  <!-- 可选重启入口（需 pass= 密码） -->
+  <!-- Optional restart entry (requires pass= password) -->
   <div id="restartBox">
-    <input id="passInput" type="password" placeholder="密码" autocomplete="off" />
-    <button id="restartBtn" type="button">重新计时</button>
+    <input id="passInput" type="password" placeholder="Password" autocomplete="off" />
+    <button id="restartBtn" type="button">Restart Timer</button>
   </div>
 
   <script>
@@ -75,16 +75,16 @@
       } catch (e) { return def; }
     }
 
-    /* ============ 参数说明 ============
-     * min   限时分钟数（默认 1，支持小数，如 1.5=1分30秒）
-     * sec   额外秒数（默认 0）
-     * build 游戏构建：wasm（默认）/ js
-     * boost 性能增强 Mod：1（默认）/ 0
-     * timer 是否显示倒计时：1（默认）/ 0
-     * msg   到点白屏时显示的一行小字（留空=纯白屏）
-     * pass  重新计时所需密码（留空=白屏后无任何入口）
-     * reset 1 表示清掉已存计时、重新开始（家长用）
-     * 示例：index.html?min=45&build=wasm&msg=时间到了，休息一下吧
+    /* ============ Parameters ============
+     * min   time limit in minutes (default 1, decimals allowed, e.g. 1.5 = 1 min 30 s)
+     * sec   extra seconds (default 0)
+     * build game build: wasm (default) / js
+     * boost performance mod: 1 (default) / 0
+     * timer show countdown: 1 (default) / 0
+     * msg   one line of text shown on the white screen (empty = plain white)
+     * pass  password required to restart the timer (empty = no restart entry)
+     * reset 1 clears the stored timer and starts over (for parents)
+     * Example: index.html?min=45&build=wasm&msg=Time is up, take a break
      */
     var MIN   = Math.max(0, parseFloat(qs('min', '1')) || 0);
     var SEC   = Math.max(0, parseInt(qs('sec', '0'), 10) || 0);
@@ -95,13 +95,13 @@
     var PASS  = qs('pass', '');
     var RESET = qs('reset', '0') === '1';
 
-    var TOTAL = Math.max(1, MIN * 60 + SEC); // 总秒数
-    /* key 里带上时长：家长改时长后旧计时自动作废、重新计时；
-       不改时长时（孩子刷新页面）计时继续有效 */
+    var TOTAL = Math.max(1, MIN * 60 + SEC); // total seconds
+    /* The key includes the duration: changing the duration invalidates the old timer
+       and restarts; keeping it the same (kid refreshing the page) keeps the timer */
     var KEY = 'mc112_limit_start_' + TOTAL;
     var done = false;
 
-    /* ---- 读取/写入计时起点：刷新页面不会重置计时 ---- */
+    /* ---- Read/write timer start: refreshing the page does not reset the timer ---- */
     var start = null;
     try {
       if (RESET) localStorage.removeItem(KEY);
@@ -110,7 +110,7 @@
         var t = parseInt(raw, 10);
         if (isFinite(t)) start = t;
       }
-    } catch (e) { /* localStorage 不可用时退回单次会话计时 */ }
+    } catch (e) { /* fall back to per-session timing when localStorage is unavailable */ }
     if (start === null) {
       start = Date.now();
       try { localStorage.setItem(KEY, String(start)); } catch (e) {}
@@ -127,14 +127,14 @@
       return h > 0 ? (h + ':' + p(m) + ':' + p(s)) : (p(m) + ':' + p(s));
     }
 
-    /* ---- 到点：整屏白屏 + 停掉游戏 ---- */
+    /* ---- Time up: full white screen + stop the game ---- */
     function whiteout() {
       if (done) return;
       done = true;
       var frame = document.getElementById('frame');
-      try { frame.src = 'about:blank'; } catch (e) {}   // 卸载游戏，停止声音和渲染
+      try { frame.src = 'about:blank'; } catch (e) {}   // unload the game, stop audio and rendering
       var msgEl = document.getElementById('whiteMsg');
-      msgEl.textContent = MSG || '';                     // 默认纯白，无任何文字
+      msgEl.textContent = MSG || '';                     // plain white by default
       document.getElementById('whiteScreen').classList.add('show');
       document.getElementById('timerChip').style.display = 'none';
       if (PASS) document.getElementById('restartBox').classList.add('show');
@@ -144,24 +144,24 @@
       var r = remaining();
       if (r <= 0) { whiteout(); return; }
       if (SHOW_TIMER) {
-        document.getElementById('timerChip').textContent = '剩余 ' + fmt(r);
+        document.getElementById('timerChip').textContent = 'Time left ' + fmt(r);
       }
     }
 
-    /* ---- 启动 ---- */
+    /* ---- Boot ---- */
     var frame = document.getElementById('frame');
     frame.src = './' + BUILD + '/?boost=' + BOOST;
     document.getElementById('timerChip').style.display = SHOW_TIMER ? '' : 'none';
 
     tick();
     setInterval(tick, 500);
-    /* 切回标签页时立刻校准，防止后台偷偷拖时间 */
+    /* Re-check immediately when the tab becomes visible again */
     document.addEventListener('visibilitychange', tick);
 
-    /* ---- 可选：密码重启计时 ---- */
+    /* ---- Optional: restart the timer with a password ---- */
     document.getElementById('restartBtn').addEventListener('click', function () {
       var v = document.getElementById('passInput').value;
-      if (v !== PASS) { alert('密码错误'); return; }
+      if (v !== PASS) { alert('Wrong password'); return; }
       try { localStorage.removeItem(KEY); } catch (e) {}
       var p = [];
       p.push('reset=1');
