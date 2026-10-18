@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Minecraft 1.12 · Full Version</title>
+  <link rel="icon" type="image/png" href="7878.png" />
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #000; }
+    #frame {
+      position: fixed; inset: 0; width: 100%; height: 100%;
+      border: 0; display: block; background: #000;
+    }
+    #lock {
+      position: fixed; inset: 0; z-index: 99999;
+      display: none; align-items: center; justify-content: center;
+      background: #0f131c; color: #f2f5ff;
+      font: 14px/1.8 "JetBrains Mono", Consolas, monospace;
+      flex-direction: column;
+    }
+    #lock h1 { font-size: 18px; color: #e1b741; margin: 0 0 6px; }
+    #lock p { color: #aab3c7; margin: 0 0 18px; text-align: center; max-width: 420px; }
+    #pwdInput {
+      width: 220px; padding: 10px 12px;
+      border: 1px solid #3a4155; border-radius: 0;
+      background: #1b1f28; color: #f2f5ff;
+      font: 14px "JetBrains Mono", Consolas, monospace;
+      text-align: center; outline: none;
+    }
+    #pwdBtn {
+      margin-top: 12px; padding: 10px 28px;
+      border: 1px solid #cfa63b; border-radius: 0;
+      background: #1b1f28; color: #ffecb3;
+      font: 13px "Press Start 2P", monospace; cursor: pointer;
+    }
+    #pwdBtn:hover { background: #2a2f3a; }
+    #pwdErr { color: #ff6b6b; font-size: 12px; min-height: 18px; margin-top: 10px; }
+    #pwdInfo { font-size: 11px; margin-top: 22px; color: #6b7488; }
+  </style>
+</head>
+<body>
+  <!-- Game itself (same as the launcher: wasm / js build) -->
+  <iframe id="frame" allowfullscreen allow="fullscreen; autoplay; pointer-lock" referrerpolicy="no-referrer"></iframe>
+
+  <!-- Password gate: enter once, this device is remembered from then on -->
+  <div id="lock">
+    <h1>Minecraft 1.12</h1>
+    <p>This game is private.<br />Enter the password to play. After the first correct entry,<br />this device is remembered and you won't be asked again.</p>
+    <input id="pwdInput" type="password" placeholder="Password" autocomplete="off" />
+    <button id="pwdBtn" type="button">Play</button>
+    <div id="pwdErr"></div>
+    <div id="pwdInfo"></div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+    /* ============ Parameters ============
+     * build game build: wasm (default) / js
+     * boost performance mod: 1 (default) / 0
+     */
+    function qs(name, def) {
+      try {
+        var v = new URLSearchParams(location.search).get(name);
+        return v === null ? def : v;
+      } catch (e) { return def; }
+    }
+    var BUILD = qs('build', 'wasm') === 'js' ? 'js' : 'wasm';
+    var BOOST = qs('boost', '1') === '0' ? '0' : '1';
+
+    /* ============ PASSWORD (only you should know this) ============
+     * Change PASSWORD to any text you like. Tell it only to people
+     * you allow to play.
+     */
+    var PASSWORD = 'mcFull2026';
+
+    /* This browser/device is remembered after the first correct entry.
+     * Keys used in localStorage ("the record"):
+     *   mc112_auth_token  -> random token proving this device may play
+     *   mc112_auth_since  -> timestamp (ms) of when it was first unlocked */
+    var TOKEN_KEY = 'mc112_auth_token';
+    var SINCE_KEY = 'mc112_auth_since';
+
+    var started = false;
+    function startGame() {
+      if (started) return;
+      started = true;
+      var lock = document.getElementById('lock');
+      if (lock) lock.style.display = 'none';
+      document.getElementById('frame').src = './' + BUILD + '/?boost=' + BOOST;
+    }
+
+    function grantAccess() {
+      try {
+        if (!localStorage.getItem(TOKEN_KEY)) {
+          var tok = Math.random().toString(36).slice(2) + Date.now().toString(36);
+          localStorage.setItem(TOKEN_KEY, tok);
+          localStorage.setItem(SINCE_KEY, String(Date.now()));
+        }
+      } catch (e) {}
+      startGame();
+    }
+
+    function showLock() {
+      var lock = document.getElementById('lock');
+      lock.style.display = 'flex';
+      var btn = document.getElementById('pwdBtn');
+      var input = document.getElementById('pwdInput');
+      var err = document.getElementById('pwdErr');
+      var info = document.getElementById('pwdInfo');
+
+      /* Show the local unlock record, if any */
+      try {
+        var since = localStorage.getItem(SINCE_KEY);
+        if (since) {
+          var d = new Date(Number(since));
+          info.textContent = 'This device was unlocked on ' + d.toLocaleString();
+        } else {
+          info.textContent = 'Not yet unlocked on this device.';
+        }
+      } catch (e) {}
+
+      function tryPwd() {
+        if (input.value === PASSWORD) {
+          grantAccess();
+        } else {
+          err.textContent = 'Wrong password. Try again.';
+          input.select();
+        }
+      }
+      btn.addEventListener('click', tryPwd);
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') tryPwd();
+      });
+      input.focus();
+    }
+
+    /* Already unlocked on this device? Go straight in. */
+    var remembered = false;
+    try { remembered = !!localStorage.getItem(TOKEN_KEY); } catch (e) {}
+    if (remembered) {
+      startGame();
+    } else {
+      showLock();
+    }
+  })();
+  </script>
+</body>
+</html>
