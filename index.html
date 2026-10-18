@@ -86,7 +86,7 @@
      * reset 1 clears the stored timer and starts over (for parents)
      * Example: index.html?min=45&build=wasm&msg=Time is up, take a break
      */
-    var MIN   = Math.max(0, parseFloat(qs('min', '1')) || 0);
+    var MIN   = Math.max(0, parseFloat(qs('min', '2')) || 0);
     var SEC   = Math.max(0, parseInt(qs('sec', '0'), 10) || 0);
     var BUILD = qs('build', 'wasm') === 'js' ? 'js' : 'wasm';
     var BOOST = qs('boost', '1') === '0' ? '0' : '1';
